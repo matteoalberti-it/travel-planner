@@ -26,7 +26,7 @@ const CATEGORIES = [
   { id: 'breakfast', label: 'Colazione', color: 'bg-orange-500/20 border-orange-500/40 text-orange-300' },
   { id: 'lunch', label: 'Pranzo', color: 'bg-green-500/20 border-green-500/40 text-green-300' },
   { id: 'dinner', label: 'Cena', color: 'bg-green-600/20 border-green-600/40 text-green-200' },
-  { id: 'activity', label: 'Attività', color: 'bg-blue-500/20 border-blue-500/40 text-blue-300' },
+  { id: 'activity', label: 'Attivita', color: 'bg-blue-500/20 border-blue-500/40 text-blue-300' },
   { id: 'other', label: 'Altro', color: 'bg-white/10 border-white/20 text-white/60' },
 ]
 
@@ -34,10 +34,6 @@ const HOUR_HEIGHT = 56
 
 function getCategoryStyle(category: string) {
   return CATEGORIES.find(c => c.id === category)?.color || CATEGORIES[6].color
-}
-
-function getCategoryLabel(category: string) {
-  return CATEGORIES.find(c => c.id === category)?.label || 'Altro'
 }
 
 function getDaysArray(start: string, end: string): string[] {
@@ -129,7 +125,6 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
 
   const days = getDaysArray(startDate, endDate)
 
-  // Calcola range orario adattivo
   const allTimes = items.flatMap(item => [
     item.time_start ? timeToHours(item.time_start) : null,
     item.time_end ? timeToHours(item.time_end) : null,
@@ -140,12 +135,69 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
   const hours = Array.from({ length: maxHour - minHour }, (_, i) => i + minHour)
   const totalHeight = HOUR_HEIGHT * hours.length
 
+  const renderDayItems = (dayItems: Item[]) => {
+    const positioned = dayItems.map(item => ({
+      ...item,
+      startH: item.time_start ? timeToHours(item.time_start) : minHour + 1,
+      endH: item.time_end ? timeToHours(item.time_end) : (item.time_start ? timeToHours(item.time_start) + 1 : minHour + 2),
+    }))
+
+    const columns: typeof positioned[] = []
+    positioned.forEach(item => {
+      let placed = false
+      for (const col of columns) {
+        if (!col.some(c => c.startH < item.endH && c.endH > item.startH)) {
+          col.push(item)
+          placed = true
+          break
+        }
+      }
+      if (!placed) columns.push([item])
+    })
+
+    const totalCols = columns.length || 1
+    return columns.flatMap((col, colIdx) =>
+      col.map(item => {
+        const top = (item.startH - minHour) * HOUR_HEIGHT
+        const height = Math.max((item.endH - item.startH) * HOUR_HEIGHT, 32)
+        const widthPct = 100 / totalCols
+        const leftPct = (colIdx / totalCols) * 100
+        return (
+          <div
+            key={item.id}
+            className={`absolute rounded-lg border px-2 py-1 group cursor-pointer overflow-hidden ${getCategoryStyle(item.category)}`}
+            style={{
+              top: `${top}px`,
+              height: `${height}px`,
+              width: `calc(${widthPct}% - 4px)`,
+              left: `calc(${leftPct}% + 2px)`,
+            }}
+          >
+            <div className="flex items-start justify-between gap-1">
+              <div className="min-w-0">
+                <div className="text-xs font-medium leading-tight truncate">{item.title}</div>
+                {item.time_start && (
+                  <div className="text-xs opacity-60">{item.time_start.slice(0, 5)}</div>
+                )}
+              </div>
+              <button
+                onClick={() => handleDelete(item.id)}
+                className="opacity-0 group-hover:opacity-100 text-xs shrink-0 hover:text-red-400 transition-all"
+              >
+                x
+              </button>
+            </div>
+          </div>
+        )
+      })
+    )
+  }
+
   return (
     <div>
-      {/* Form aggiunta attività */}
       {showForm && (
         <div className="bg-white/5 border border-white/10 rounded-2xl p-6 mb-6">
-          <h3 className="font-semibold mb-4">Nuova attività</h3>
+          <h3 className="font-semibold mb-4">Nuova attivita</h3>
           <div className="flex flex-col gap-3">
             <input
               type="text"
@@ -194,11 +246,8 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
         </div>
       )}
 
-      {/* Calendario adattivo */}
       <div className="overflow-x-auto rounded-2xl border border-white/10">
         <div className="flex" style={{ minWidth: `${60 + days.length * 180}px` }}>
-
-          {/* Colonna orari */}
           <div className="w-14 shrink-0 border-r border-white/10">
             <div className="h-12 border-b border-white/10" />
             <div className="relative" style={{ height: `${totalHeight}px` }}>
@@ -210,13 +259,11 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
             </div>
           </div>
 
-          {/* Colonne giorni */}
-          {days.map((day, idx) => {
+          {days.map((day) => {
             const dayItems = items.filter(item => item.date === day)
             const dateObj = new Date(day + 'T12:00:00')
             return (
               <div key={day} className="flex-1 min-w-44 border-r border-white/10 last:border-r-0">
-                {/* Header giorno */}
                 <div className="h-12 border-b border-white/10 flex items-center justify-between px-3">
                   <div>
                     <span className="text-xs text-white/30 uppercase">{dateObj.toLocaleDateString('it-IT', { weekday: 'short' })}</span>
@@ -224,35 +271,11 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
                   </div>
                   <button onClick={() => openFormForDay(day)} className="w-6 h-6 rounded-md bg-white/5 hover:bg-white/15 text-white/30 hover:text-white transition-colors flex items-center justify-center text-sm">+</button>
                 </div>
-
-                {/* Griglia oraria */}
                 <div className="relative" style={{ height: `${totalHeight}px` }}>
                   {hours.map((h, i) => (
                     <div key={h} className="absolute w-full border-t border-white/5" style={{ top: `${i * HOUR_HEIGHT}px` }} />
                   ))}
-
-                  {/* Attività */}
-                  {dayItems.map(item => {
-                    const startH = item.time_start ? timeToHours(item.time_start) : minHour + 1
-                    const endH = item.time_end ? timeToHours(item.time_end) : startH + 1
-                    const top = (startH - minHour) * HOUR_HEIGHT
-                    const height = Math.max((endH - startH) * HOUR_HEIGHT, 32)
-                    return (
-                      <div
-                        key={item.id}
-                        className={`absolute left-1 right-1 rounded-lg border px-2 py-1 group cursor-pointer overflow-hidden ${getCategoryStyle(item.category)}`}
-                        style={{ top: `${top}px`, height: `${height}px` }}
-                      >
-                        <div className="flex items-start justify-between gap-1">
-                          <div className="min-w-0">
-                            <div className="text-xs font-medium leading-tight truncate">{item.title}</div>
-                            {item.time_start && <div className="text-xs opacity-60">{item.time_start.slice(0, 5)}</div>}
-                          </div>
-                          <button onClick={() => handleDelete(item.id)} className="opacity-0 group-hover:opacity-100 text-xs shrink-0 hover:text-red-400 transition-all">✕</button>
-                        </div>
-                      </div>
-                    )
-                  })}
+                  {renderDayItems(dayItems)}
                 </div>
               </div>
             )
@@ -260,10 +283,9 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
         </div>
       </div>
 
-      {/* Empty state se nessuna attività */}
       {items.length === 0 && (
         <div className="text-center mt-4">
-          <p className="text-white/20 text-sm">Clicca <span className="text-white/40">+</span> su un giorno per aggiungere la prima attività</p>
+          <p className="text-white/20 text-sm">Clicca + su un giorno per aggiungere la prima attivita</p>
         </div>
       )}
     </div>
