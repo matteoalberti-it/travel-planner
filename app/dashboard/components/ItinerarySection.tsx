@@ -30,7 +30,7 @@ const CATEGORIES = [
   { id: 'other', label: 'Altro', color: 'bg-white/10 border-white/20 text-white/60' },
 ]
 
-const HOURS = Array.from({ length: 19 }, (_, i) => i + 6) // 6:00 - 24:00
+const HOUR_HEIGHT = 56
 
 function getCategoryStyle(category: string) {
   return CATEGORIES.find(c => c.id === category)?.color || CATEGORIES[6].color
@@ -51,13 +51,11 @@ function getDaysArray(start: string, end: string): string[] {
   return days
 }
 
-function timeToMinutes(time: string): number {
+function timeToHours(time: string): number {
   if (!time) return 0
   const [h, m] = time.split(':').map(Number)
-  return h * 60 + m
+  return h + m / 60
 }
-
-const HOUR_HEIGHT = 60 // px per ora
 
 export default function ItinerarySection({ tripId, startDate, endDate }: Props) {
   const [items, setItems] = useState<Item[]>([])
@@ -68,7 +66,7 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
   const [formStartTime, setFormStartTime] = useState('09:00')
   const [formEndTime, setFormEndTime] = useState('10:00')
   const [formLocation, setFormLocation] = useState('')
-  const [formDescription, setFormNotes] = useState('')
+  const [formDescription, setFormDescription] = useState('')
   const supabase = createClient()
 
   useEffect(() => { fetchItems() }, [tripId])
@@ -103,7 +101,7 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
       setFormStartTime('09:00')
       setFormEndTime('10:00')
       setFormLocation('')
-      setFormNotes('')
+      setFormDescription('')
       setFormCategory('activity')
       fetchItems()
     }
@@ -130,7 +128,17 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
   }
 
   const days = getDaysArray(startDate, endDate)
-  const totalHeight = HOUR_HEIGHT * HOURS.length
+
+  // Calcola range orario adattivo
+  const allTimes = items.flatMap(item => [
+    item.time_start ? timeToHours(item.time_start) : null,
+    item.time_end ? timeToHours(item.time_end) : null,
+  ]).filter((t): t is number => t !== null)
+
+  const minHour = allTimes.length > 0 ? Math.max(0, Math.floor(Math.min(...allTimes)) - 1) : 8
+  const maxHour = allTimes.length > 0 ? Math.min(24, Math.ceil(Math.max(...allTimes)) + 1) : 20
+  const hours = Array.from({ length: maxHour - minHour }, (_, i) => i + minHour)
+  const totalHeight = HOUR_HEIGHT * hours.length
 
   return (
     <div>
@@ -149,11 +157,7 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="text-xs text-white/50 mb-1.5 block">Giorno *</label>
-                <select
-                  value={formDate}
-                  onChange={e => setFormDate(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none"
-                >
+                <select value={formDate} onChange={e => setFormDate(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none">
                   {days.map(d => (
                     <option key={d} value={d} className="bg-black">
                       {new Date(d + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' })}
@@ -163,11 +167,7 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
               </div>
               <div className="flex-1">
                 <label className="text-xs text-white/50 mb-1.5 block">Categoria</label>
-                <select
-                  value={formCategory}
-                  onChange={e => setFormCategory(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none"
-                >
+                <select value={formCategory} onChange={e => setFormCategory(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none">
                   {CATEGORIES.map(c => (
                     <option key={c.id} value={c.id} className="bg-black">{c.label}</option>
                   ))}
@@ -185,7 +185,7 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
               </div>
             </div>
             <input type="text" value={formLocation} onChange={e => setFormLocation(e.target.value)} placeholder="Luogo (opzionale)" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none" />
-            <input type="text" value={formDescription} onChange={e => setFormNotes(e.target.value)} placeholder="Note (opzionale)" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none" />
+            <input type="text" value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder="Note (opzionale)" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none" />
           </div>
           <div className="flex gap-3 mt-4">
             <button onClick={() => setShowForm(false)} className="flex-1 border border-white/10 text-white py-2.5 rounded-xl text-sm hover:border-white/30">Annulla</button>
@@ -194,7 +194,7 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
         </div>
       )}
 
-      {/* Calendario stile Google */}
+      {/* Calendario adattivo */}
       <div className="overflow-x-auto rounded-2xl border border-white/10">
         <div className="flex" style={{ minWidth: `${60 + days.length * 180}px` }}>
 
@@ -202,12 +202,8 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
           <div className="w-14 shrink-0 border-r border-white/10">
             <div className="h-12 border-b border-white/10" />
             <div className="relative" style={{ height: `${totalHeight}px` }}>
-              {HOURS.map(h => (
-                <div
-                  key={h}
-                  className="absolute w-full pr-2 text-right"
-                  style={{ top: `${(h - 6) * HOUR_HEIGHT - 8}px` }}
-                >
+              {hours.map((h, i) => (
+                <div key={h} className="absolute w-full pr-2 text-right" style={{ top: `${i * HOUR_HEIGHT - 8}px` }}>
                   <span className="text-xs text-white/25">{h}:00</span>
                 </div>
               ))}
@@ -223,38 +219,24 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
                 {/* Header giorno */}
                 <div className="h-12 border-b border-white/10 flex items-center justify-between px-3">
                   <div>
-                    <span className="text-xs text-white/30 uppercase">
-                      {dateObj.toLocaleDateString('it-IT', { weekday: 'short' })}
-                    </span>
-                    <span className="text-xs text-white/60 ml-1">
-                      {dateObj.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
-                    </span>
+                    <span className="text-xs text-white/30 uppercase">{dateObj.toLocaleDateString('it-IT', { weekday: 'short' })}</span>
+                    <span className="text-xs text-white/60 ml-1">{dateObj.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}</span>
                   </div>
-                  <button
-                    onClick={() => openFormForDay(day)}
-                    className="w-6 h-6 rounded-md bg-white/5 hover:bg-white/15 text-white/30 hover:text-white transition-colors flex items-center justify-center text-sm"
-                  >
-                    +
-                  </button>
+                  <button onClick={() => openFormForDay(day)} className="w-6 h-6 rounded-md bg-white/5 hover:bg-white/15 text-white/30 hover:text-white transition-colors flex items-center justify-center text-sm">+</button>
                 </div>
 
                 {/* Griglia oraria */}
                 <div className="relative" style={{ height: `${totalHeight}px` }}>
-                  {/* Linee orarie */}
-                  {HOURS.map(h => (
-                    <div
-                      key={h}
-                      className="absolute w-full border-t border-white/5"
-                      style={{ top: `${(h - 6) * HOUR_HEIGHT}px` }}
-                    />
+                  {hours.map((h, i) => (
+                    <div key={h} className="absolute w-full border-t border-white/5" style={{ top: `${i * HOUR_HEIGHT}px` }} />
                   ))}
 
-                  {/* Attività posizionate */}
+                  {/* Attività */}
                   {dayItems.map(item => {
-                    const startMins = timeToMinutes(item.time_start) || timeToMinutes('09:00')
-                    const endMins = timeToMinutes(item.time_end) || startMins + 60
-                    const top = ((startMins / 60) - 6) * HOUR_HEIGHT
-                    const height = Math.max(((endMins - startMins) / 60) * HOUR_HEIGHT, 30)
+                    const startH = item.time_start ? timeToHours(item.time_start) : minHour + 1
+                    const endH = item.time_end ? timeToHours(item.time_end) : startH + 1
+                    const top = (startH - minHour) * HOUR_HEIGHT
+                    const height = Math.max((endH - startH) * HOUR_HEIGHT, 32)
                     return (
                       <div
                         key={item.id}
@@ -264,16 +246,9 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
                         <div className="flex items-start justify-between gap-1">
                           <div className="min-w-0">
                             <div className="text-xs font-medium leading-tight truncate">{item.title}</div>
-                            {item.time_start && (
-                              <div className="text-xs opacity-60">{item.time_start.slice(0, 5)}</div>
-                            )}
+                            {item.time_start && <div className="text-xs opacity-60">{item.time_start.slice(0, 5)}</div>}
                           </div>
-                          <button
-                            onClick={() => handleDelete(item.id)}
-                            className="opacity-0 group-hover:opacity-100 text-xs shrink-0 hover:text-red-400 transition-all"
-                          >
-                            ✕
-                          </button>
+                          <button onClick={() => handleDelete(item.id)} className="opacity-0 group-hover:opacity-100 text-xs shrink-0 hover:text-red-400 transition-all">✕</button>
                         </div>
                       </div>
                     )
@@ -284,6 +259,13 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
           })}
         </div>
       </div>
+
+      {/* Empty state se nessuna attività */}
+      {items.length === 0 && (
+        <div className="text-center mt-4">
+          <p className="text-white/20 text-sm">Clicca <span className="text-white/40">+</span> su un giorno per aggiungere la prima attività</p>
+        </div>
+      )}
     </div>
   )
 }
