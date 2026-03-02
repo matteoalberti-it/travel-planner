@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter, useParams } from 'next/navigation'
 import BucketSection from '@/app/dashboard/components/BucketSection'
+import ItinerarySection from '@/app/dashboard/components/ItinerarySection'
 
 export default function TripPage() {
   const [trip, setTrip] = useState<any>(null)
@@ -162,12 +163,12 @@ export default function TripPage() {
 
         {/* Contenuto tab */}
         {activeTab === 'secchio' && <BucketSection tripId={params.id as string} />}
-        {activeTab === 'itinerario' && (
-          <div className="border border-white/10 border-dashed rounded-2xl p-16 flex flex-col items-center justify-center text-center">
-            <div className="text-5xl mb-4">🗓️</div>
-            <h2 className="text-xl font-semibold mb-2">Itinerario in arrivo</h2>
-            <p className="text-white/40 text-sm max-w-sm">Presto potrai pianificare le tue giornate con l'AI.</p>
-          </div>
+{activeTab === 'itinerario' && (
+          <ItinerarySection
+            tripId={params.id as string}
+            startDate={trip?.start_date || ''}
+            endDate={trip?.end_date || ''}
+          />
         )}
         {activeTab === 'biglietti' && (
           <div className="border border-white/10 border-dashed rounded-2xl p-16 flex flex-col items-center justify-center text-center">
