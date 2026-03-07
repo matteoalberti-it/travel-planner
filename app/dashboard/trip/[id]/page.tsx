@@ -86,7 +86,7 @@ export default function TripPage() {
                 type="text"
                 value={editName}
                 onChange={e => setEditName(e.target.value)}
-                placeholder="Nome viaggio"
+                onKeyDown={e => e.key === "Enter" && handleSave()} placeholder="Nome viaggio"
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-white/30"
               />
               <input

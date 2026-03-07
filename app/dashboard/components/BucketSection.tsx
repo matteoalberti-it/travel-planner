@@ -198,7 +198,7 @@ export default function BucketSection({ tripId }: Props) {
                         <button key={e} onClick={() => setCustomEmoji(e)} className={`w-10 h-10 rounded-xl text-xl transition-colors ${customEmoji === e ? 'bg-white/20 border border-white/40' : 'bg-white/5 hover:bg-white/10'}`}>{e}</button>
                       ))}
                     </div>
-                    <input type="text" value={customName} onChange={e => setCustomName(e.target.value)} placeholder="Nome categoria..." className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none" />
+                    <input type="text" value={customName} onChange={e => setCustomName(e.target.value)} onKeyDown={e => e.key === "Enter" && handleCreateCategory()} placeholder="Nome categoria..." className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none" />
                   </div>
                 )}
               </div>
@@ -235,7 +235,7 @@ export default function BucketSection({ tripId }: Props) {
                   <button key={e} onClick={() => setEditCategoryEmoji(e)} className={`w-10 h-10 rounded-xl text-xl ${editCategoryEmoji === e ? 'bg-white/20 border border-white/40' : 'bg-white/5 hover:bg-white/10'}`}>{e}</button>
                 ))}
               </div>
-              <input type="text" value={editCategoryName} onChange={e => setEditCategoryName(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none mb-3" />
+              <input type="text" onKeyDown={e => e.key === "Enter" && handleUpdateCategory()} value={editCategoryName} onChange={e => setEditCategoryName(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none mb-3" />
               <div className="flex gap-3">
                 <button onClick={() => setEditingCategory(false)} className="flex-1 border border-white/10 text-white py-2 rounded-xl text-sm">Annulla</button>
                 <button onClick={handleUpdateCategory} className="flex-1 bg-white text-black py-2 rounded-xl text-sm font-semibold">Salva</button>
@@ -253,7 +253,7 @@ export default function BucketSection({ tripId }: Props) {
               <div key={item.id} className="bg-white/3 border border-white/8 rounded-xl px-4 py-3 group">
                 {editingItem?.id === item.id ? (
                   <div className="flex flex-col gap-2">
-                    <input type="text" value={editingItem.title} onChange={e => setEditingItem({...editingItem, title: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
+                    <input type="text" onKeyDown={e => e.key === "Enter" && handleUpdateItem()} value={editingItem.title} onChange={e => setEditingItem({...editingItem, title: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
                     <input type="text" value={editingItem.url} onChange={e => setEditingItem({...editingItem, url: e.target.value})} placeholder="Link (opzionale)" className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none" />
                     <input type="text" value={editingItem.notes} onChange={e => setEditingItem({...editingItem, notes: e.target.value})} placeholder="Note (opzionale)" className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none" />
                     <label className="flex items-center gap-2 text-sm text-white/60 cursor-pointer">
@@ -287,7 +287,7 @@ export default function BucketSection({ tripId }: Props) {
             <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
               <h3 className="font-semibold mb-3">Nuova voce</h3>
               <div className="flex flex-col gap-2">
-                <input type="text" value={newItemTitle} onChange={e => setNewItemTitle(e.target.value)} placeholder="Nome *" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none" />
+                <input type="text" value={newItemTitle} onChange={e => setNewItemTitle(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAddItem()} placeholder="Nome *" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none" />
                 <input type="text" value={newItemUrl} onChange={e => setNewItemUrl(e.target.value)} placeholder="Link (opzionale)" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none" />
                 <input type="text" value={newItemNotes} onChange={e => setNewItemNotes(e.target.value)} placeholder="Note (opzionale)" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none" />
                 <label className="flex items-center gap-2 text-sm text-white/60 cursor-pointer mt-1">

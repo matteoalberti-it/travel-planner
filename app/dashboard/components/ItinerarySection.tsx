@@ -212,7 +212,7 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
           <div className="bg-white/5 border border-white/10 rounded-2xl p-6 mb-6">
             <h3 className="font-semibold mb-4">Nuova attivita</h3>
             <div className="flex flex-col gap-3">
-              <input type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)} placeholder="Titolo *" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none" />
+              <input type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAdd()} placeholder="Titolo *" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none" />
               <div className="flex gap-3">
                 <div className="flex-1">
                   <label className="text-xs text-white/50 mb-1.5 block">Giorno *</label>
@@ -300,7 +300,7 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
             <div>
               <h3 className="font-semibold mb-4">Modifica</h3>
               <div className="flex flex-col gap-3">
-                <input type="text" value={editingItem.title} onChange={e => setEditingItem({...editingItem, title: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none" />
+                <input type="text" onKeyDown={e => e.key === "Enter" && handleUpdate()} value={editingItem.title} onChange={e => setEditingItem({...editingItem, title: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none" />
                 <select value={editingItem.category} onChange={e => setEditingItem({...editingItem, category: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none">
                   {CATEGORIES.map(c => (<option key={c.id} value={c.id} className="bg-black">{c.label}</option>))}
                 </select>
