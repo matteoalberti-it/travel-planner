@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '../../lib/supabase'
+import { createClient } from '../../../lib/supabase'
 import { useRouter } from 'next/navigation'
 
 type Step = 1 | 2 | 3 | 4
