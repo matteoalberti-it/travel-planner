@@ -14,6 +14,18 @@ interface Item {
   description: string
 }
 
+interface Booking {
+  id: string
+  type: string
+  title: string
+  booking_date: string
+  time_start: string
+  time_end: string
+  location_from: string
+  location_to: string
+  notes: string
+}
+
 interface Props {
   tripId: string
   startDate: string
@@ -53,10 +65,23 @@ function timeToHours(time: string): number {
   return h + m / 60
 }
 
+function datesBetween(start: string, end: string): string[] {
+  const days: string[] = []
+  const current = new Date(start + 'T12:00:00')
+  const last = new Date(end + 'T12:00:00')
+  while (current <= last) {
+    days.push(current.toISOString().split('T')[0])
+    current.setDate(current.getDate() + 1)
+  }
+  return days
+}
+
 export default function ItinerarySection({ tripId, startDate, endDate }: Props) {
   const [items, setItems] = useState<Item[]>([])
+  const [bookings, setBookings] = useState<Booking[]>([])
   const [showForm, setShowForm] = useState(false)
   const [selectedItem, setSelectedItem] = useState<Item | null>(null)
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
   const [editingItem, setEditingItem] = useState<Item | null>(null)
   const [formDate, setFormDate] = useState('')
   const [formTitle, setFormTitle] = useState('')
@@ -67,7 +92,7 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
   const [formDescription, setFormDescription] = useState('')
   const supabase = createClient()
 
-  useEffect(() => { fetchItems() }, [tripId])
+  useEffect(() => { fetchItems(); fetchBookings() }, [tripId])
 
   const fetchItems = async () => {
     const { data } = await supabase
@@ -76,6 +101,14 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
       .eq('trip_id', tripId)
       .order('time_start', { ascending: true })
     if (data) setItems(data as Item[])
+  }
+
+  const fetchBookings = async () => {
+    const { data } = await supabase
+      .from('bookings')
+      .select('*')
+      .eq('trip_id', tripId)
+    if (data) setBookings(data as Booking[])
   }
 
   const handleAdd = async () => {
@@ -156,15 +189,98 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
   const hours = Array.from({ length: maxHour - minHour }, (_, i) => i + minHour)
   const totalHeight = HOUR_HEIGHT * hours.length
 
-  const renderDayItems = (dayItems: Item[]) => {
+  // Hotel bookings: barra viola in cima per ogni giorno del soggiorno
+  const hotelBookings = bookings.filter(b => b.type === 'hotel')
+
+  // Booking slots: voli, treni, transfer con orario
+  const slotBookings = bookings.filter(b =>
+    ['flight', 'train', 'transfer', 'activity', 'restaurant', 'other'].includes(b.type) && b.booking_date && b.time_start
+  )
+
+  const getBookingSlotStyle = (type: string) => {
+    if (type === 'flight') return 'bg-sky-500/15 border-sky-400/40 text-sky-300'
+    if (type === 'train') return 'bg-yellow-500/15 border-yellow-400/40 text-yellow-300'
+    if (type === 'transfer') return 'bg-orange-500/15 border-orange-400/40 text-orange-300'
+    return 'bg-white/8 border-white/20 text-white/60'
+  }
+
+  const getBookingEmoji = (type: string) => {
+    if (type === 'flight') return '✈️'
+    if (type === 'train') return '🚆'
+    if (type === 'transfer') return '🚗'
+    if (type === 'activity') return '🎯'
+    if (type === 'restaurant') return '🍽️'
+    return '📄'
+  }
+
+  const renderDayItems = (day: string, dayItems: Item[]) => {
+    // Slot normali attività
     const positioned = dayItems.map(item => ({
       ...item,
       startH: item.time_start ? timeToHours(item.time_start) : minHour + 1,
       endH: item.time_end ? timeToHours(item.time_end) : (item.time_start ? timeToHours(item.time_start) + 1 : minHour + 2),
+      isBooking: false,
+      bookingType: '',
     }))
 
-    const columns: typeof positioned[] = []
-    positioned.forEach(item => {
+    // Slot prenotazioni con orario per questo giorno
+    const daySlotBookings = slotBookings
+      .filter(b => b.booking_date === day)
+      .map(b => ({
+        id: b.id,
+        title: b.title,
+        date: b.booking_date,
+        time_start: b.time_start,
+        time_end: b.time_end || '',
+        category: b.type,
+        location: b.location_from || '',
+        description: b.notes || '',
+        startH: timeToHours(b.time_start),
+        endH: b.time_end ? timeToHours(b.time_end) : timeToHours(b.time_start) + 1,
+        isBooking: true,
+        bookingType: b.type,
+      }))
+
+    // Check-in reminder per questo giorno
+    const checkInBookings = hotelBookings
+      .filter(b => b.booking_date === day && b.time_start)
+      .map(b => ({
+        id: b.id + '_checkin',
+        title: '🛬 Check-in: ' + b.title,
+        date: day,
+        time_start: b.time_start,
+        time_end: b.time_end ? String(Math.min(timeToHours(b.time_start) + 0.5, 23.9)).replace('.', ':') : '',
+        category: 'reminder',
+        location: '',
+        description: '',
+        startH: timeToHours(b.time_start),
+        endH: timeToHours(b.time_start) + 0.5,
+        isBooking: true,
+        bookingType: 'reminder',
+      }))
+
+    // Check-out reminder per questo giorno
+    const checkOutBookings = hotelBookings
+      .filter(b => b.location_to === day && b.time_end)
+      .map(b => ({
+        id: b.id + '_checkout',
+        title: '🛫 Check-out: ' + b.title,
+        date: day,
+        time_start: b.time_end,
+        time_end: '',
+        category: 'reminder',
+        location: '',
+        description: '',
+        startH: timeToHours(b.time_end),
+        endH: timeToHours(b.time_end) + 0.5,
+        isBooking: true,
+        bookingType: 'reminder',
+      }))
+
+    const allItems = [...positioned, ...daySlotBookings, ...checkInBookings, ...checkOutBookings]
+
+    const columns: typeof allItems[] = []
+    allItems.forEach(item => {
       let placed = false
       for (const col of columns) {
         if (!col.some(c => c.startH < item.endH && c.endH > item.startH)) {
@@ -180,13 +296,60 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
     return columns.flatMap((col, colIdx) =>
       col.map(item => {
         const top = (item.startH - minHour) * HOUR_HEIGHT
-        const height = Math.max((item.endH - item.startH) * HOUR_HEIGHT, 32)
+        const height = Math.max((item.endH - item.startH) * HOUR_HEIGHT, 28)
         const widthPct = 100 / totalCols
         const leftPct = (colIdx / totalCols) * 100
+
+        // Reminder check-in/check-out: stile tratteggiato grigio
+        if (item.bookingType === 'reminder') {
+          return (
+            <div
+              key={item.id}
+              className="absolute rounded-lg px-2 py-1 overflow-hidden cursor-default"
+              style={{
+                top: top + 'px',
+                height: height + 'px',
+                width: 'calc(' + widthPct + '% - 4px)',
+                left: 'calc(' + leftPct + '% + 2px)',
+                border: '1px dashed rgba(255,255,255,0.25)',
+                background: 'rgba(255,255,255,0.04)',
+              }}
+            >
+              <div className="text-xs text-white/40 leading-tight truncate">{item.title}</div>
+              {item.time_start && <div className="text-xs text-white/25">{item.time_start.slice(0,5)}</div>}
+            </div>
+          )
+        }
+
+        // Slot prenotazioni (voli, treni, ecc.)
+        if (item.isBooking) {
+          return (
+            <div
+              key={item.id}
+              onClick={() => {
+                const b = bookings.find(bk => bk.id === item.id)
+                if (b) { setSelectedBooking(b); setSelectedItem(null) }
+              }}
+              className={`absolute rounded-lg border px-2 py-1 cursor-pointer overflow-hidden transition-opacity hover:opacity-90 ${getBookingSlotStyle(item.bookingType)}`}
+              style={{
+                top: top + 'px',
+                height: height + 'px',
+                width: 'calc(' + widthPct + '% - 4px)',
+                left: 'calc(' + leftPct + '% + 2px)',
+                borderStyle: 'dashed',
+              }}
+            >
+              <div className="text-xs font-medium leading-tight truncate">{getBookingEmoji(item.bookingType)} {item.title}</div>
+              {item.time_start && <div className="text-xs opacity-60">{item.time_start.slice(0,5)}</div>}
+            </div>
+          )
+        }
+
+        // Attività normali
         return (
           <div
             key={item.id}
-            onClick={() => { setSelectedItem(item); setEditingItem(null) }}
+            onClick={() => { setSelectedItem(item as unknown as Item); setSelectedBooking(null); setEditingItem(null) }}
             className={`absolute rounded-lg border px-2 py-1 cursor-pointer overflow-hidden transition-opacity hover:opacity-90 ${getCategoryStyle(item.category)}`}
             style={{
               top: top + 'px',
@@ -196,9 +359,7 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
             }}
           >
             <div className="text-xs font-medium leading-tight truncate">{item.title}</div>
-            {item.time_start && (
-              <div className="text-xs opacity-60">{item.time_start.slice(0, 5)}</div>
-            )}
+            {item.time_start && <div className="text-xs opacity-60">{item.time_start.slice(0,5)}</div>}
           </div>
         )
       })
@@ -254,7 +415,8 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
         <div className="overflow-x-auto rounded-2xl border border-white/10">
           <div className="flex" style={{ minWidth: (60 + days.length * 180) + 'px' }}>
             <div className="w-14 shrink-0 border-r border-white/10">
-              <div className="h-12 border-b border-white/10" />
+              {/* Spazio header hotel bars */}
+              <div className="border-b border-white/10" style={{ height: hotelBookings.length > 0 ? '52px' : '48px' }} />
               <div className="relative" style={{ height: totalHeight + 'px' }}>
                 {hours.map((h, i) => (
                   <div key={h} className="absolute w-full pr-2 text-right" style={{ top: (i * HOUR_HEIGHT - 8) + 'px' }}>
@@ -263,23 +425,50 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
                 ))}
               </div>
             </div>
+
             {days.map((day) => {
               const dayItems = items.filter(item => item.date === day)
               const dateObj = new Date(day + 'T12:00:00')
+
+              // Hotel che includono questo giorno
+              const dayHotels = hotelBookings.filter(b => {
+                const checkIn = b.booking_date
+                const checkOut = b.location_to
+                return checkIn && checkOut && day >= checkIn && day <= checkOut
+              })
+
               return (
                 <div key={day} className="flex-1 min-w-44 border-r border-white/10 last:border-r-0">
-                  <div className="h-12 border-b border-white/10 flex items-center justify-between px-3">
-                    <div>
-                      <span className="text-xs text-white/30 uppercase">{dateObj.toLocaleDateString('it-IT', { weekday: 'short' })}</span>
-                      <span className="text-xs text-white/60 ml-1">{dateObj.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}</span>
+                  {/* Header con nome giorno + barra hotel */}
+                  <div className="border-b border-white/10" style={{ height: hotelBookings.length > 0 ? '52px' : '48px' }}>
+                    <div className="flex items-center justify-between px-3 h-8">
+                      <div>
+                        <span className="text-xs text-white/30 uppercase">{dateObj.toLocaleDateString('it-IT', { weekday: 'short' })}</span>
+                        <span className="text-xs text-white/60 ml-1">{dateObj.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}</span>
+                      </div>
+                      <button onClick={() => openFormForDay(day)} className="w-6 h-6 rounded-md bg-white/5 hover:bg-white/15 text-white/30 hover:text-white transition-colors flex items-center justify-center text-sm">+</button>
                     </div>
-                    <button onClick={() => openFormForDay(day)} className="w-6 h-6 rounded-md bg-white/5 hover:bg-white/15 text-white/30 hover:text-white transition-colors flex items-center justify-center text-sm">+</button>
+                    {/* Barra hotel viola */}
+                    {dayHotels.length > 0 && (
+                      <div className="px-1 flex flex-col gap-0.5">
+                        {dayHotels.map(b => (
+                          <div
+                            key={b.id}
+                            onClick={() => { setSelectedBooking(b); setSelectedItem(null) }}
+                            className="w-full rounded px-2 py-0.5 text-xs text-purple-200 bg-purple-500/25 border border-purple-500/40 cursor-pointer hover:bg-purple-500/35 truncate"
+                          >
+                            🛏️ {b.title}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
+
                   <div className="relative" style={{ height: totalHeight + 'px' }}>
                     {hours.map((h, i) => (
                       <div key={h} className="absolute w-full border-t border-white/5" style={{ top: (i * HOUR_HEIGHT) + 'px' }} />
                     ))}
-                    {renderDayItems(dayItems)}
+                    {renderDayItems(day, dayItems)}
                   </div>
                 </div>
               )
@@ -287,14 +476,15 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
           </div>
         </div>
 
-        {items.length === 0 && (
+        {items.length === 0 && bookings.length === 0 && (
           <div className="text-center mt-4">
             <p className="text-white/20 text-sm">Clicca + su un giorno per aggiungere la prima attivita</p>
           </div>
         )}
       </div>
 
-      {selectedItem && (
+      {/* Pannello dettaglio attività */}
+      {selectedItem && !selectedBooking && (
         <div className="w-72 shrink-0 bg-white/5 border border-white/10 rounded-2xl p-5 h-fit">
           {editingItem ? (
             <div>
@@ -325,32 +515,14 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
                 <div className={`text-xs px-2 py-0.5 rounded-full border ${getCategoryStyle(selectedItem.category)}`}>
                   {CATEGORIES.find(c => c.id === selectedItem.category)?.label || 'Altro'}
                 </div>
-                <button onClick={() => setSelectedItem(null)} className="text-white/30 hover:text-white text-sm">x</button>
+                <button onClick={() => setSelectedItem(null)} className="text-white/30 hover:text-white text-sm">✕</button>
               </div>
               <h3 className="font-semibold text-base mb-3">{selectedItem.title}</h3>
               <div className="flex flex-col gap-2 text-sm text-white/50">
-                <div className="flex items-center gap-2">
-                  <span>📅</span>
-                  <span>{new Date(selectedItem.date + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
-                </div>
-                {selectedItem.time_start && (
-                  <div className="flex items-center gap-2">
-                    <span>🕐</span>
-                    <span>{selectedItem.time_start.slice(0,5)}{selectedItem.time_end ? ' - ' + selectedItem.time_end.slice(0,5) : ''}</span>
-                  </div>
-                )}
-                {selectedItem.location && (
-                  <div className="flex items-center gap-2">
-                    <span>📍</span>
-                    <span>{selectedItem.location}</span>
-                  </div>
-                )}
-                {selectedItem.description && (
-                  <div className="flex items-center gap-2">
-                    <span>📝</span>
-                    <span>{selectedItem.description}</span>
-                  </div>
-                )}
+                <div className="flex items-center gap-2"><span>📅</span><span>{new Date(selectedItem.date + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}</span></div>
+                {selectedItem.time_start && <div className="flex items-center gap-2"><span>🕐</span><span>{selectedItem.time_start.slice(0,5)}{selectedItem.time_end ? ' - ' + selectedItem.time_end.slice(0,5) : ''}</span></div>}
+                {selectedItem.location && <div className="flex items-center gap-2"><span>📍</span><span>{selectedItem.location}</span></div>}
+                {selectedItem.description && <div className="flex items-center gap-2"><span>📝</span><span>{selectedItem.description}</span></div>}
               </div>
               <div className="flex gap-2 mt-5">
                 <button onClick={() => handleDelete(selectedItem.id)} className="flex-1 border border-red-500/30 text-red-400 py-2 rounded-xl text-sm hover:border-red-500/60">Elimina</button>
@@ -358,6 +530,34 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Pannello dettaglio prenotazione */}
+      {selectedBooking && !selectedItem && (
+        <div className="w-72 shrink-0 bg-white/5 border border-white/10 rounded-2xl p-5 h-fit">
+          <div className="flex items-start justify-between mb-4">
+            <span className="text-xs text-white/40 bg-white/5 px-2 py-0.5 rounded-full">Prenotazione confermata</span>
+            <button onClick={() => setSelectedBooking(null)} className="text-white/30 hover:text-white text-sm">✕</button>
+          </div>
+          <h3 className="font-semibold text-base mb-3">{selectedBooking.title}</h3>
+          <div className="flex flex-col gap-2 text-sm text-white/50">
+            {selectedBooking.type === 'hotel' ? (
+              <>
+                {selectedBooking.booking_date && <div className="flex gap-2"><span>🛬</span><span>Check-in: {new Date(selectedBooking.booking_date + 'T12:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}{selectedBooking.time_start ? ` — ${selectedBooking.time_start.slice(0,5)}` : ''}</span></div>}
+                {selectedBooking.location_to && <div className="flex gap-2"><span>🛫</span><span>Check-out: {new Date(selectedBooking.location_to + 'T12:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}{selectedBooking.time_end ? ` — ${selectedBooking.time_end.slice(0,5)}` : ''}</span></div>}
+              </>
+            ) : (
+              <>
+                {selectedBooking.booking_date && <div className="flex gap-2"><span>📅</span><span>{new Date(selectedBooking.booking_date + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}</span></div>}
+                {selectedBooking.time_start && <div className="flex gap-2"><span>🕐</span><span>{selectedBooking.time_start.slice(0,5)}{selectedBooking.time_end ? ` — ${selectedBooking.time_end.slice(0,5)}` : ''}</span></div>}
+                {selectedBooking.location_from && <div className="flex gap-2"><span>🛫</span><span>{selectedBooking.location_from}</span></div>}
+                {selectedBooking.location_to && <div className="flex gap-2"><span>🛬</span><span>{selectedBooking.location_to}</span></div>}
+              </>
+            )}
+            {selectedBooking.notes && <div className="flex gap-2"><span>📝</span><span>{selectedBooking.notes}</span></div>}
+          </div>
+          <p className="text-xs text-white/20 mt-4">Per modificare vai nella tab Biglietti</p>
         </div>
       )}
     </div>

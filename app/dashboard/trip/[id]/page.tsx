@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase'
 import { useRouter, useParams } from 'next/navigation'
 import BucketSection from '@/app/dashboard/components/BucketSection'
 import ItinerarySection from '@/app/dashboard/components/ItinerarySection'
+import BookingsSection from '@/app/dashboard/components/BookingsSection'
 
 export default function TripPage() {
   const [trip, setTrip] = useState<any>(null)
@@ -111,6 +112,7 @@ export default function TripPage() {
                   <input
                     type="date"
                     value={editEndDate}
+                    min={editStartDate || undefined}
                     onChange={e => setEditEndDate(e.target.value)}
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30"
                   />
@@ -171,11 +173,7 @@ export default function TripPage() {
           />
         )}
         {activeTab === 'biglietti' && (
-          <div className="border border-white/10 border-dashed rounded-2xl p-16 flex flex-col items-center justify-center text-center">
-            <div className="text-5xl mb-4">🎫</div>
-            <h2 className="text-xl font-semibold mb-2">Biglietti in arrivo</h2>
-            <p className="text-white/40 text-sm max-w-sm">Qui potrai salvare tutti i tuoi biglietti e prenotazioni.</p>
-          </div>
+          <BookingsSection tripId={params.id as string} startDate={trip?.start_date || ''} endDate={trip?.end_date || ''} />
         )}
         {activeTab === 'spese' && (
           <div className="border border-white/10 border-dashed rounded-2xl p-16 flex flex-col items-center justify-center text-center">
