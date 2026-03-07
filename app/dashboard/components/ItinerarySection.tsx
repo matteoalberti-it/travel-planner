@@ -24,6 +24,10 @@ interface Booking {
   location_from: string
   location_to: string
   notes: string
+  confirmation_code: string
+  amount: number
+  currency: string
+  url: string
 }
 
 interface Props {
@@ -42,10 +46,34 @@ const CATEGORIES = [
   { id: 'other', label: 'Altro', color: 'bg-white/10 border-white/20 text-white/60' },
 ]
 
+const BOOKING_TYPES = [
+  { id: 'flight', label: 'Volo', emoji: '✈️', color: 'bg-sky-500/20 border-sky-400/40 text-sky-300' },
+  { id: 'hotel', label: 'Hotel', emoji: '🛏️', color: 'bg-purple-500/20 border-purple-500/40 text-purple-300' },
+  { id: 'transfer', label: 'Transfer & Taxi', emoji: '🚗', color: 'bg-orange-500/20 border-orange-400/40 text-orange-300' },
+  { id: 'train', label: 'Treno & Bus', emoji: '🚆', color: 'bg-yellow-500/20 border-yellow-400/40 text-yellow-300' },
+  { id: 'activity', label: 'Attivita & Esperienza', emoji: '🎯', color: 'bg-blue-500/20 border-blue-500/40 text-blue-300' },
+  { id: 'restaurant', label: 'Ristorante', emoji: '🍽️', color: 'bg-green-500/20 border-green-500/40 text-green-300' },
+  { id: 'other', label: 'Altro', emoji: '📄', color: 'bg-white/10 border-white/20 text-white/60' },
+]
+
 const HOUR_HEIGHT = 56
+const inputClass = "w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none"
+const labelClass = "text-xs text-white/50 mb-1.5 block"
+
+function FieldGroup({ label, children }: { label?: string, children: React.ReactNode }) {
+  return <div>{label && <label className={labelClass}>{label}</label>}{children}</div>
+}
 
 function getCategoryStyle(category: string) {
   return CATEGORIES.find(c => c.id === category)?.color || CATEGORIES[6].color
+}
+
+function getBookingColor(type: string) {
+  return BOOKING_TYPES.find(t => t.id === type)?.color || 'bg-white/10 border-white/20 text-white/60'
+}
+
+function getBookingEmoji(type: string) {
+  return BOOKING_TYPES.find(t => t.id === type)?.emoji || '📄'
 }
 
 function getDaysArray(start: string, end: string): string[] {
@@ -65,17 +93,6 @@ function timeToHours(time: string): number {
   return h + m / 60
 }
 
-function datesBetween(start: string, end: string): string[] {
-  const days: string[] = []
-  const current = new Date(start + 'T12:00:00')
-  const last = new Date(end + 'T12:00:00')
-  while (current <= last) {
-    days.push(current.toISOString().split('T')[0])
-    current.setDate(current.getDate() + 1)
-  }
-  return days
-}
-
 export default function ItinerarySection({ tripId, startDate, endDate }: Props) {
   const [items, setItems] = useState<Item[]>([])
   const [bookings, setBookings] = useState<Booking[]>([])
@@ -83,6 +100,9 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
   const [selectedItem, setSelectedItem] = useState<Item | null>(null)
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
   const [editingItem, setEditingItem] = useState<Item | null>(null)
+
+  // Form state
+  const [formMode, setFormMode] = useState<'simple' | 'booking'>('simple')
   const [formDate, setFormDate] = useState('')
   const [formTitle, setFormTitle] = useState('')
   const [formCategory, setFormCategory] = useState('activity')
@@ -90,80 +110,111 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
   const [formEndTime, setFormEndTime] = useState('10:00')
   const [formLocation, setFormLocation] = useState('')
   const [formDescription, setFormDescription] = useState('')
+
+  // Booking form state
+  const [bookingType, setBookingType] = useState('flight')
+  const [bookingTitle, setBookingTitle] = useState('')
+  const [bookingDate, setBookingDate] = useState('')
+  const [bookingTimeStart, setBookingTimeStart] = useState('')
+  const [bookingTimeEnd, setBookingTimeEnd] = useState('')
+  const [bookingLocationFrom, setBookingLocationFrom] = useState('')
+  const [bookingLocationTo, setBookingLocationTo] = useState('')
+  const [bookingConfirmation, setBookingConfirmation] = useState('')
+  const [bookingNotes, setBookingNotes] = useState('')
+  const [bookingUrl, setBookingUrl] = useState('')
+  const [bookingAmount, setBookingAmount] = useState('')
+  const [bookingCurrency, setBookingCurrency] = useState('EUR')
+  const [bookingCheckInDate, setBookingCheckInDate] = useState('')
+  const [bookingCheckOutDate, setBookingCheckOutDate] = useState('')
+  const [bookingCheckInTime, setBookingCheckInTime] = useState('')
+  const [bookingCheckOutTime, setBookingCheckOutTime] = useState('')
+  const [bookingFlightNumber, setBookingFlightNumber] = useState('')
+
   const supabase = createClient()
 
-  useEffect(() => { fetchItems(); fetchBookings() }, [tripId])
+  useEffect(() => { fetchItems(); fetchBookings() }, [tripId, startDate, endDate])
 
   const fetchItems = async () => {
-    const { data } = await supabase
-      .from('itinerary_items')
-      .select('*')
-      .eq('trip_id', tripId)
-      .order('time_start', { ascending: true })
+    const { data } = await supabase.from('itinerary_items').select('*').eq('trip_id', tripId).order('time_start', { ascending: true })
     if (data) setItems(data as Item[])
   }
 
   const fetchBookings = async () => {
-    const { data } = await supabase
-      .from('bookings')
-      .select('*')
-      .eq('trip_id', tripId)
+    const { data } = await supabase.from('bookings').select('*').eq('trip_id', tripId)
     if (data) setBookings(data as Booking[])
   }
 
+  const resetForm = () => {
+    setFormTitle(''); setFormStartTime('09:00'); setFormEndTime('10:00')
+    setFormLocation(''); setFormDescription(''); setFormCategory('activity')
+    setBookingTitle(''); setBookingDate(''); setBookingTimeStart(''); setBookingTimeEnd('')
+    setBookingLocationFrom(''); setBookingLocationTo(''); setBookingConfirmation('')
+    setBookingNotes(''); setBookingUrl(''); setBookingAmount(''); setBookingCurrency('EUR')
+    setBookingCheckInDate(''); setBookingCheckOutDate(''); setBookingCheckInTime('')
+    setBookingCheckOutTime(''); setBookingFlightNumber(''); setBookingType('flight')
+  }
+
   const handleAdd = async () => {
-    if (!formTitle.trim() || !formDate) return
-    const { data: authData } = await supabase.auth.getUser()
-    const user = authData?.user
-    if (!user) return
-    const { error } = await supabase.from('itinerary_items').insert({
-      trip_id: tripId,
-      title: formTitle,
-      date: formDate,
-      time_start: formStartTime || null,
-      time_end: formEndTime || null,
-      category: formCategory,
-      location: formLocation || null,
-      description: formDescription || null,
-    })
-    if (!error) {
-      setShowForm(false)
-      setFormTitle('')
-      setFormStartTime('09:00')
-      setFormEndTime('10:00')
-      setFormLocation('')
-      setFormDescription('')
-      setFormCategory('activity')
+    if (formMode === 'simple') {
+      if (!formTitle.trim() || !formDate) return
+      await supabase.from('itinerary_items').insert({
+        trip_id: tripId, title: formTitle, date: formDate,
+        time_start: formStartTime || null, time_end: formEndTime || null,
+        category: formCategory, location: formLocation || null, description: formDescription || null,
+      })
       fetchItems()
+    } else {
+      const t = bookingType
+      const title = bookingTitle.trim()
+      if (!title) return
+      const payload = {
+        trip_id: tripId, type: t, title,
+        booking_date: t === 'hotel' ? bookingCheckInDate : bookingDate || null,
+        time_start: t === 'hotel' ? bookingCheckInTime : bookingTimeStart || null,
+        time_end: t === 'hotel' ? bookingCheckOutTime : bookingTimeEnd || null,
+        location_from: bookingLocationFrom || null,
+        location_to: t === 'hotel' ? bookingCheckOutDate : bookingLocationTo || null,
+        confirmation_code: bookingConfirmation || null,
+        notes: t === 'flight' || t === 'train' ? bookingFlightNumber || null : bookingNotes || null,
+        url: bookingUrl || null,
+        amount: bookingAmount ? parseFloat(bookingAmount) : null,
+        currency: bookingCurrency,
+      }
+      const { error } = await supabase.from('bookings').insert(payload)
+      if (error) { alert('Errore: ' + JSON.stringify(error)); return }
+      fetchBookings()
     }
+    setShowForm(false)
+    resetForm()
   }
 
   const handleUpdate = async () => {
     if (!editingItem || !editingItem.title.trim()) return
     await supabase.from('itinerary_items').update({
-      title: editingItem.title,
-      date: editingItem.date,
-      time_start: editingItem.time_start || null,
-      time_end: editingItem.time_end || null,
-      category: editingItem.category,
-      location: editingItem.location || null,
+      title: editingItem.title, date: editingItem.date,
+      time_start: editingItem.time_start || null, time_end: editingItem.time_end || null,
+      category: editingItem.category, location: editingItem.location || null,
       description: editingItem.description || null,
     }).eq('id', editingItem.id)
-    setEditingItem(null)
-    setSelectedItem(null)
-    fetchItems()
+    setEditingItem(null); setSelectedItem(null); fetchItems()
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm('Eliminare questa attivita?')) return
     await supabase.from('itinerary_items').delete().eq('id', id)
-    setSelectedItem(null)
-    setEditingItem(null)
-    fetchItems()
+    setSelectedItem(null); setEditingItem(null); fetchItems()
+  }
+
+  const handleDeleteBooking = async (id: string) => {
+    if (!confirm('Eliminare questa prenotazione?')) return
+    await supabase.from('bookings').delete().eq('id', id)
+    setSelectedBooking(null); fetchBookings()
   }
 
   const openFormForDay = (date: string) => {
     setFormDate(date)
+    setBookingDate(date)
+    setBookingCheckInDate(date)
     setShowForm(true)
   }
 
@@ -178,236 +229,240 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
   }
 
   const days = getDaysArray(startDate, endDate)
-
-  const allTimes = items.flatMap(item => [
-    item.time_start ? timeToHours(item.time_start) : null,
-    item.time_end ? timeToHours(item.time_end) : null,
-  ]).filter((t): t is number => t !== null)
+  const allTimes = [
+    ...items.flatMap(item => [
+      item.time_start ? timeToHours(item.time_start) : null,
+      item.time_end ? timeToHours(item.time_end) : null,
+    ]),
+    ...bookings.flatMap(b => [
+      b.time_start ? timeToHours(b.time_start) : null,
+      b.time_end ? timeToHours(b.time_end) : null,
+    ]),
+  ].filter((t): t is number => t !== null)
 
   const minHour = allTimes.length > 0 ? Math.max(0, Math.floor(Math.min(...allTimes)) - 1) : 8
   const maxHour = allTimes.length > 0 ? Math.min(24, Math.ceil(Math.max(...allTimes)) + 1) : 20
   const hours = Array.from({ length: maxHour - minHour }, (_, i) => i + minHour)
   const totalHeight = HOUR_HEIGHT * hours.length
 
-  // Hotel bookings: barra viola in cima per ogni giorno del soggiorno
   const hotelBookings = bookings.filter(b => b.type === 'hotel')
-
-  // Booking slots: voli, treni, transfer con orario
   const slotBookings = bookings.filter(b =>
     ['flight', 'train', 'transfer', 'activity', 'restaurant', 'other'].includes(b.type) && b.booking_date && b.time_start
   )
 
-  const getBookingSlotStyle = (type: string) => {
-    if (type === 'flight') return 'bg-sky-500/15 border-sky-400/40 text-sky-300'
-    if (type === 'train') return 'bg-yellow-500/15 border-yellow-400/40 text-yellow-300'
-    if (type === 'transfer') return 'bg-orange-500/15 border-orange-400/40 text-orange-300'
-    return 'bg-white/8 border-white/20 text-white/60'
-  }
-
-  const getBookingEmoji = (type: string) => {
-    if (type === 'flight') return '✈️'
-    if (type === 'train') return '🚆'
-    if (type === 'transfer') return '🚗'
-    if (type === 'activity') return '🎯'
-    if (type === 'restaurant') return '🍽️'
-    return '📄'
-  }
-
   const renderDayItems = (day: string, dayItems: Item[]) => {
-    // Slot normali attività
     const positioned = dayItems.map(item => ({
       ...item,
       startH: item.time_start ? timeToHours(item.time_start) : minHour + 1,
       endH: item.time_end ? timeToHours(item.time_end) : (item.time_start ? timeToHours(item.time_start) + 1 : minHour + 2),
-      isBooking: false,
-      bookingType: '',
+      isBooking: false, bookingType: '',
     }))
 
-    // Slot prenotazioni con orario per questo giorno
-    const daySlotBookings = slotBookings
-      .filter(b => b.booking_date === day)
-      .map(b => ({
-        id: b.id,
-        title: b.title,
-        date: b.booking_date,
-        time_start: b.time_start,
-        time_end: b.time_end || '',
-        category: b.type,
-        location: b.location_from || '',
-        description: b.notes || '',
-        startH: timeToHours(b.time_start),
-        endH: b.time_end ? timeToHours(b.time_end) : timeToHours(b.time_start) + 1,
-        isBooking: true,
-        bookingType: b.type,
-      }))
+    const daySlotBookings = slotBookings.filter(b => b.booking_date === day).map(b => ({
+      id: b.id, title: b.title, date: b.booking_date,
+      time_start: b.time_start, time_end: b.time_end || '',
+      category: b.type, location: b.location_from || '', description: b.notes || '',
+      startH: timeToHours(b.time_start),
+      endH: b.time_end ? timeToHours(b.time_end) : timeToHours(b.time_start) + 1,
+      isBooking: true, bookingType: b.type,
+    }))
 
-    // Check-in reminder per questo giorno
-    const checkInBookings = hotelBookings
-      .filter(b => b.booking_date === day && b.time_start)
-      .map(b => ({
-        id: b.id + '_checkin',
-        title: '🛬 Check-in: ' + b.title,
-        date: day,
-        time_start: b.time_start,
-        time_end: b.time_end ? String(Math.min(timeToHours(b.time_start) + 0.5, 23.9)).replace('.', ':') : '',
-        category: 'reminder',
-        location: '',
-        description: '',
-        startH: timeToHours(b.time_start),
-        endH: timeToHours(b.time_start) + 0.5,
-        isBooking: true,
-        bookingType: 'reminder',
-      }))
+    const checkInReminders = hotelBookings.filter(b => b.booking_date === day && b.time_start).map(b => ({
+      id: b.id + '_ci', title: '🛬 Check-in: ' + b.title, date: day,
+      time_start: b.time_start, time_end: '', category: 'reminder', location: '', description: '',
+      startH: timeToHours(b.time_start), endH: timeToHours(b.time_start) + 0.5,
+      isBooking: true, bookingType: 'reminder',
+    }))
 
-    // Check-out reminder per questo giorno
-    const checkOutBookings = hotelBookings
-      .filter(b => b.location_to === day && b.time_end)
-      .map(b => ({
-        id: b.id + '_checkout',
-        title: '🛫 Check-out: ' + b.title,
-        date: day,
-        time_start: b.time_end,
-        time_end: '',
-        category: 'reminder',
-        location: '',
-        description: '',
-        startH: timeToHours(b.time_end),
-        endH: timeToHours(b.time_end) + 0.5,
-        isBooking: true,
-        bookingType: 'reminder',
-      }))
+    const checkOutReminders = hotelBookings.filter(b => b.location_to === day && b.time_end).map(b => ({
+      id: b.id + '_co', title: '🛫 Check-out: ' + b.title, date: day,
+      time_start: b.time_end, time_end: '', category: 'reminder', location: '', description: '',
+      startH: timeToHours(b.time_end), endH: timeToHours(b.time_end) + 0.5,
+      isBooking: true, bookingType: 'reminder',
+    }))
 
-    const allItems = [...positioned, ...daySlotBookings, ...checkInBookings, ...checkOutBookings]
-
+    const allItems = [...positioned, ...daySlotBookings, ...checkInReminders, ...checkOutReminders]
     const columns: typeof allItems[] = []
     allItems.forEach(item => {
       let placed = false
       for (const col of columns) {
-        if (!col.some(c => c.startH < item.endH && c.endH > item.startH)) {
-          col.push(item)
-          placed = true
-          break
-        }
+        if (!col.some(c => c.startH < item.endH && c.endH > item.startH)) { col.push(item); placed = true; break }
       }
       if (!placed) columns.push([item])
     })
 
     const totalCols = columns.length || 1
-    return columns.flatMap((col, colIdx) =>
-      col.map(item => {
-        const top = (item.startH - minHour) * HOUR_HEIGHT
-        const height = Math.max((item.endH - item.startH) * HOUR_HEIGHT, 28)
-        const widthPct = 100 / totalCols
-        const leftPct = (colIdx / totalCols) * 100
+    return columns.flatMap((col, colIdx) => col.map(item => {
+      const top = (item.startH - minHour) * HOUR_HEIGHT
+      const height = Math.max((item.endH - item.startH) * HOUR_HEIGHT, 28)
+      const widthPct = 100 / totalCols
+      const leftPct = (colIdx / totalCols) * 100
+      const style = { top: top + 'px', height: height + 'px', width: 'calc(' + widthPct + '% - 4px)', left: 'calc(' + leftPct + '% + 2px)' }
 
-        // Reminder check-in/check-out: stile tratteggiato grigio
-        if (item.bookingType === 'reminder') {
-          return (
-            <div
-              key={item.id}
-              className="absolute rounded-lg px-2 py-1 overflow-hidden cursor-default"
-              style={{
-                top: top + 'px',
-                height: height + 'px',
-                width: 'calc(' + widthPct + '% - 4px)',
-                left: 'calc(' + leftPct + '% + 2px)',
-                border: '1px dashed rgba(255,255,255,0.25)',
-                background: 'rgba(255,255,255,0.04)',
-              }}
-            >
-              <div className="text-xs text-white/40 leading-tight truncate">{item.title}</div>
-              {item.time_start && <div className="text-xs text-white/25">{item.time_start.slice(0,5)}</div>}
-            </div>
-          )
-        }
-
-        // Slot prenotazioni (voli, treni, ecc.)
-        if (item.isBooking) {
-          return (
-            <div
-              key={item.id}
-              onClick={() => {
-                const b = bookings.find(bk => bk.id === item.id)
-                if (b) { setSelectedBooking(b); setSelectedItem(null) }
-              }}
-              className={`absolute rounded-lg border px-2 py-1 cursor-pointer overflow-hidden transition-opacity hover:opacity-90 ${getBookingSlotStyle(item.bookingType)}`}
-              style={{
-                top: top + 'px',
-                height: height + 'px',
-                width: 'calc(' + widthPct + '% - 4px)',
-                left: 'calc(' + leftPct + '% + 2px)',
-                borderStyle: 'dashed',
-              }}
-            >
-              <div className="text-xs font-medium leading-tight truncate">{getBookingEmoji(item.bookingType)} {item.title}</div>
-              {item.time_start && <div className="text-xs opacity-60">{item.time_start.slice(0,5)}</div>}
-            </div>
-          )
-        }
-
-        // Attività normali
+      if (item.bookingType === 'reminder') {
         return (
-          <div
-            key={item.id}
-            onClick={() => { setSelectedItem(item as unknown as Item); setSelectedBooking(null); setEditingItem(null) }}
-            className={`absolute rounded-lg border px-2 py-1 cursor-pointer overflow-hidden transition-opacity hover:opacity-90 ${getCategoryStyle(item.category)}`}
-            style={{
-              top: top + 'px',
-              height: height + 'px',
-              width: 'calc(' + widthPct + '% - 4px)',
-              left: 'calc(' + leftPct + '% + 2px)',
-            }}
-          >
-            <div className="text-xs font-medium leading-tight truncate">{item.title}</div>
+          <div key={item.id} className="absolute rounded-lg px-2 py-1 overflow-hidden cursor-default" style={{ ...style, border: '1px dashed rgba(255,255,255,0.25)', background: 'rgba(255,255,255,0.04)' }}>
+            <div className="text-xs text-white/40 leading-tight truncate">{item.title}</div>
+            {item.time_start && <div className="text-xs text-white/25">{item.time_start.slice(0,5)}</div>}
+          </div>
+        )
+      }
+
+      if (item.isBooking) {
+        return (
+          <div key={item.id} onClick={() => { const b = bookings.find(bk => bk.id === item.id); if (b) { setSelectedBooking(b); setSelectedItem(null) } }} className={`absolute rounded-lg border px-2 py-1 cursor-pointer overflow-hidden hover:opacity-90 ${getBookingColor(item.bookingType)}`} style={style}>
+            <div className="text-xs font-medium leading-tight truncate">{getBookingEmoji(item.bookingType)} {item.title}</div>
             {item.time_start && <div className="text-xs opacity-60">{item.time_start.slice(0,5)}</div>}
           </div>
         )
-      })
+      }
+
+      return (
+        <div key={item.id} onClick={() => { setSelectedItem(item as unknown as Item); setSelectedBooking(null); setEditingItem(null) }} className={`absolute rounded-lg border px-2 py-1 cursor-pointer overflow-hidden hover:opacity-90 ${getCategoryStyle(item.category)}`} style={style}>
+          <div className="text-xs font-medium leading-tight truncate">{item.title}</div>
+          {item.time_start && <div className="text-xs opacity-60">{item.time_start.slice(0,5)}</div>}
+        </div>
+      )
+    }))
+  }
+
+  const renderBookingFormFields = () => {
+    const t = bookingType
+    return (
+      <div className="flex flex-col gap-3">
+        {t !== 'hotel' && (
+          <input type="text" value={bookingTitle} onChange={e => setBookingTitle(e.target.value)} placeholder="Titolo *" className={inputClass} />
+        )}
+        {t === 'hotel' && (
+          <input type="text" value={bookingTitle} onChange={e => setBookingTitle(e.target.value)} placeholder="Nome hotel *" className={inputClass} />
+        )}
+
+        {t === 'flight' && <>
+          <div className="flex gap-3">
+            <input type="text" value={bookingLocationFrom} onChange={e => setBookingLocationFrom(e.target.value)} placeholder="Aeroporto partenza" className={`flex-1 ${inputClass}`} />
+            <input type="text" value={bookingLocationTo} onChange={e => setBookingLocationTo(e.target.value)} placeholder="Aeroporto arrivo" className={`flex-1 ${inputClass}`} />
+          </div>
+          <div className="flex gap-3">
+            <FieldGroup label="Data"><input type="date" value={bookingDate} min={startDate} max={endDate} onChange={e => setBookingDate(e.target.value)} className={inputClass} /></FieldGroup>
+            <FieldGroup label="Ora partenza"><input type="time" value={bookingTimeStart} onChange={e => setBookingTimeStart(e.target.value)} className={inputClass} /></FieldGroup>
+            <FieldGroup label="Ora arrivo"><input type="time" value={bookingTimeEnd} onChange={e => setBookingTimeEnd(e.target.value)} className={inputClass} /></FieldGroup>
+          </div>
+          <input type="text" value={bookingFlightNumber} onChange={e => setBookingFlightNumber(e.target.value)} placeholder="Numero volo (es. FR1234)" className={inputClass} />
+        </>}
+
+        {t === 'hotel' && <>
+          <div className="flex gap-3">
+            <FieldGroup label="Check-in"><input type="date" value={bookingCheckInDate} min={startDate} max={endDate} onChange={e => setBookingCheckInDate(e.target.value)} className={inputClass} /></FieldGroup>
+            <FieldGroup label="Orario check-in"><input type="time" value={bookingCheckInTime} onChange={e => setBookingCheckInTime(e.target.value)} className={inputClass} /></FieldGroup>
+          </div>
+          <div className="flex gap-3">
+            <FieldGroup label="Check-out"><input type="date" value={bookingCheckOutDate} min={bookingCheckInDate || startDate} max={endDate} onChange={e => setBookingCheckOutDate(e.target.value)} className={inputClass} /></FieldGroup>
+            <FieldGroup label="Orario check-out"><input type="time" value={bookingCheckOutTime} onChange={e => setBookingCheckOutTime(e.target.value)} className={inputClass} /></FieldGroup>
+          </div>
+          <input type="text" value={bookingLocationFrom} onChange={e => setBookingLocationFrom(e.target.value)} placeholder="Indirizzo (opzionale)" className={inputClass} />
+        </>}
+
+        {t === 'transfer' && <>
+          <div className="flex gap-3">
+            <input type="text" value={bookingLocationFrom} onChange={e => setBookingLocationFrom(e.target.value)} placeholder="Da" className={`flex-1 ${inputClass}`} />
+            <input type="text" value={bookingLocationTo} onChange={e => setBookingLocationTo(e.target.value)} placeholder="A" className={`flex-1 ${inputClass}`} />
+          </div>
+          <div className="flex gap-3">
+            <FieldGroup label="Data"><input type="date" value={bookingDate} min={startDate} max={endDate} onChange={e => setBookingDate(e.target.value)} className={inputClass} /></FieldGroup>
+            <FieldGroup label="Orario pickup"><input type="time" value={bookingTimeStart} onChange={e => setBookingTimeStart(e.target.value)} className={inputClass} /></FieldGroup>
+          </div>
+        </>}
+
+        {t === 'train' && <>
+          <div className="flex gap-3">
+            <input type="text" value={bookingLocationFrom} onChange={e => setBookingLocationFrom(e.target.value)} placeholder="Stazione partenza" className={`flex-1 ${inputClass}`} />
+            <input type="text" value={bookingLocationTo} onChange={e => setBookingLocationTo(e.target.value)} placeholder="Stazione arrivo" className={`flex-1 ${inputClass}`} />
+          </div>
+          <div className="flex gap-3">
+            <FieldGroup label="Data"><input type="date" value={bookingDate} min={startDate} max={endDate} onChange={e => setBookingDate(e.target.value)} className={inputClass} /></FieldGroup>
+            <FieldGroup label="Ora partenza"><input type="time" value={bookingTimeStart} onChange={e => setBookingTimeStart(e.target.value)} className={inputClass} /></FieldGroup>
+            <FieldGroup label="Ora arrivo"><input type="time" value={bookingTimeEnd} onChange={e => setBookingTimeEnd(e.target.value)} className={inputClass} /></FieldGroup>
+          </div>
+          <input type="text" value={bookingFlightNumber} onChange={e => setBookingFlightNumber(e.target.value)} placeholder="Numero treno (opzionale)" className={inputClass} />
+        </>}
+
+        {(t === 'activity' || t === 'restaurant' || t === 'other') && <>
+          <div className="flex gap-3">
+            <FieldGroup label="Data"><input type="date" value={bookingDate} min={startDate} max={endDate} onChange={e => setBookingDate(e.target.value)} className={inputClass} /></FieldGroup>
+            <FieldGroup label="Orario"><input type="time" value={bookingTimeStart} onChange={e => setBookingTimeStart(e.target.value)} className={inputClass} /></FieldGroup>
+          </div>
+          <input type="text" value={bookingLocationFrom} onChange={e => setBookingLocationFrom(e.target.value)} placeholder="Luogo (opzionale)" className={inputClass} />
+          {t === 'other' && <input type="text" value={bookingNotes} onChange={e => setBookingNotes(e.target.value)} placeholder="Note (opzionale)" className={inputClass} />}
+        </>}
+
+        <input type="text" value={bookingConfirmation} onChange={e => setBookingConfirmation(e.target.value)} placeholder="Codice prenotazione (opzionale)" className={inputClass} />
+        <div className="flex gap-3">
+          <input type="number" value={bookingAmount} onChange={e => setBookingAmount(e.target.value)} placeholder="Prezzo (opzionale)" className={`flex-1 ${inputClass}`} />
+          <select value={bookingCurrency} onChange={e => setBookingCurrency(e.target.value)} className="w-24 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none">
+            <option value="EUR" className="bg-black">EUR</option>
+            <option value="USD" className="bg-black">USD</option>
+            <option value="GBP" className="bg-black">GBP</option>
+          </select>
+        </div>
+        <input type="text" value={bookingUrl} onChange={e => setBookingUrl(e.target.value)} placeholder="Link prenotazione (opzionale)" className={inputClass} />
+      </div>
     )
   }
+
+  const canSubmit = formMode === 'simple' ? formTitle.trim() !== '' : bookingTitle.trim() !== ''
 
   return (
     <div className="flex gap-6">
       <div className="flex-1 min-w-0">
         {showForm && (
           <div className="bg-white/5 border border-white/10 rounded-2xl p-6 mb-6">
-            <h3 className="font-semibold mb-4">Nuova attivita</h3>
-            <div className="flex flex-col gap-3">
-              <input type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAdd()} placeholder="Titolo *" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none" />
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="text-xs text-white/50 mb-1.5 block">Giorno *</label>
-                  <select value={formDate} onChange={e => setFormDate(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none">
-                    {days.map(d => (
-                      <option key={d} value={d} className="bg-black">
-                        {new Date(d + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' })}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex-1">
-                  <label className="text-xs text-white/50 mb-1.5 block">Categoria</label>
-                  <select value={formCategory} onChange={e => setFormCategory(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none">
-                    {CATEGORIES.map(c => (<option key={c.id} value={c.id} className="bg-black">{c.label}</option>))}
-                  </select>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="text-xs text-white/50 mb-1.5 block">Ora inizio</label>
-                  <input type="time" value={formStartTime} onChange={e => setFormStartTime(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" />
-                </div>
-                <div className="flex-1">
-                  <label className="text-xs text-white/50 mb-1.5 block">Ora fine</label>
-                  <input type="time" value={formEndTime} onChange={e => setFormEndTime(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" />
-                </div>
-              </div>
-              <input type="text" value={formLocation} onChange={e => setFormLocation(e.target.value)} placeholder="Luogo (opzionale)" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none" />
-              <input type="text" value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder="Note (opzionale)" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none" />
+            <h3 className="font-semibold mb-4">Aggiungi al calendario</h3>
+
+            {/* Toggle Attività / Prenotazione */}
+            <div className="flex gap-1 mb-4 bg-white/5 p-1 rounded-xl w-fit">
+              <button onClick={() => setFormMode('simple')} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${formMode === 'simple' ? 'bg-white text-black' : 'text-white/40 hover:text-white'}`}>📍 Attività</button>
+              <button onClick={() => setFormMode('booking')} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${formMode === 'booking' ? 'bg-white text-black' : 'text-white/40 hover:text-white'}`}>🎫 Prenotazione</button>
             </div>
+
+            {formMode === 'simple' ? (
+              <div className="flex flex-col gap-3">
+                <input type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="Titolo *" className={inputClass} />
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className={labelClass}>Giorno *</label>
+                    <select value={formDate} onChange={e => setFormDate(e.target.value)} className={inputClass}>
+                      {days.map(d => (<option key={d} value={d} className="bg-black">{new Date(d + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' })}</option>))}
+                    </select>
+                  </div>
+                  <div className="flex-1">
+                    <label className={labelClass}>Categoria</label>
+                    <select value={formCategory} onChange={e => setFormCategory(e.target.value)} className={inputClass}>
+                      {CATEGORIES.map(c => (<option key={c.id} value={c.id} className="bg-black">{c.label}</option>))}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <div className="flex-1"><label className={labelClass}>Ora inizio</label><input type="time" value={formStartTime} onChange={e => setFormStartTime(e.target.value)} className={inputClass} /></div>
+                  <div className="flex-1"><label className={labelClass}>Ora fine</label><input type="time" value={formEndTime} onChange={e => setFormEndTime(e.target.value)} className={inputClass} /></div>
+                </div>
+                <input type="text" value={formLocation} onChange={e => setFormLocation(e.target.value)} placeholder="Luogo (opzionale)" className={inputClass} />
+                <input type="text" value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder="Note (opzionale)" className={inputClass} />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className={labelClass}>Tipo prenotazione</label>
+                  <select value={bookingType} onChange={e => setBookingType(e.target.value)} className={inputClass}>
+                    {BOOKING_TYPES.map(t => (<option key={t.id} value={t.id} className="bg-black">{t.emoji} {t.label}</option>))}
+                  </select>
+                </div>
+                {renderBookingFormFields()}
+              </div>
+            )}
+
             <div className="flex gap-3 mt-4">
-              <button onClick={() => setShowForm(false)} className="flex-1 border border-white/10 text-white py-2.5 rounded-xl text-sm hover:border-white/30">Annulla</button>
-              <button onClick={handleAdd} disabled={!formTitle.trim()} className="flex-1 bg-white text-black py-2.5 rounded-xl text-sm font-semibold disabled:opacity-30">Aggiungi</button>
+              <button onClick={() => { setShowForm(false); resetForm() }} className="flex-1 border border-white/10 text-white py-2.5 rounded-xl text-sm hover:border-white/30">Annulla</button>
+              <button onClick={handleAdd} disabled={!canSubmit} className="flex-1 bg-white text-black py-2.5 rounded-xl text-sm font-semibold disabled:opacity-30">Aggiungi</button>
             </div>
           </div>
         )}
@@ -415,7 +470,6 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
         <div className="overflow-x-auto rounded-2xl border border-white/10">
           <div className="flex" style={{ minWidth: (60 + days.length * 180) + 'px' }}>
             <div className="w-14 shrink-0 border-r border-white/10">
-              {/* Spazio header hotel bars */}
               <div className="border-b border-white/10" style={{ height: hotelBookings.length > 0 ? '52px' : '48px' }} />
               <div className="relative" style={{ height: totalHeight + 'px' }}>
                 {hours.map((h, i) => (
@@ -429,8 +483,6 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
             {days.map((day) => {
               const dayItems = items.filter(item => item.date === day)
               const dateObj = new Date(day + 'T12:00:00')
-
-              // Hotel che includono questo giorno
               const dayHotels = hotelBookings.filter(b => {
                 const checkIn = b.booking_date
                 const checkOut = b.location_to
@@ -439,7 +491,6 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
 
               return (
                 <div key={day} className="flex-1 min-w-44 border-r border-white/10 last:border-r-0">
-                  {/* Header con nome giorno + barra hotel */}
                   <div className="border-b border-white/10" style={{ height: hotelBookings.length > 0 ? '52px' : '48px' }}>
                     <div className="flex items-center justify-between px-3 h-8">
                       <div>
@@ -448,15 +499,10 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
                       </div>
                       <button onClick={() => openFormForDay(day)} className="w-6 h-6 rounded-md bg-white/5 hover:bg-white/15 text-white/30 hover:text-white transition-colors flex items-center justify-center text-sm">+</button>
                     </div>
-                    {/* Barra hotel viola */}
                     {dayHotels.length > 0 && (
                       <div className="px-1 flex flex-col gap-0.5">
                         {dayHotels.map(b => (
-                          <div
-                            key={b.id}
-                            onClick={() => { setSelectedBooking(b); setSelectedItem(null) }}
-                            className="w-full rounded px-2 py-0.5 text-xs text-purple-200 bg-purple-500/25 border border-purple-500/40 cursor-pointer hover:bg-purple-500/35 truncate"
-                          >
+                          <div key={b.id} onClick={() => { setSelectedBooking(b); setSelectedItem(null) }} className="w-full rounded px-2 py-0.5 text-xs text-purple-200 bg-purple-500/25 border border-purple-500/40 cursor-pointer hover:bg-purple-500/35 truncate">
                             🛏️ {b.title}
                           </div>
                         ))}
@@ -490,22 +536,22 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
             <div>
               <h3 className="font-semibold mb-4">Modifica</h3>
               <div className="flex flex-col gap-3">
-                <input type="text" onKeyDown={e => e.key === "Enter" && handleUpdate()} value={editingItem.title} onChange={e => setEditingItem({...editingItem, title: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none" />
-                <select value={editingItem.category} onChange={e => setEditingItem({...editingItem, category: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none">
+                <input type="text" onKeyDown={e => e.key === 'Enter' && handleUpdate()} value={editingItem.title} onChange={e => setEditingItem({...editingItem, title: e.target.value})} className={inputClass} />
+                <select value={editingItem.category} onChange={e => setEditingItem({...editingItem, category: e.target.value})} className={inputClass}>
                   {CATEGORIES.map(c => (<option key={c.id} value={c.id} className="bg-black">{c.label}</option>))}
                 </select>
-                <select value={editingItem.date} onChange={e => setEditingItem({...editingItem, date: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none">
+                <select value={editingItem.date} onChange={e => setEditingItem({...editingItem, date: e.target.value})} className={inputClass}>
                   {days.map(d => (<option key={d} value={d} className="bg-black">{new Date(d + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' })}</option>))}
                 </select>
                 <div className="flex gap-2">
-                  <input type="time" value={editingItem.time_start || ''} onChange={e => setEditingItem({...editingItem, time_start: e.target.value})} className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none" />
-                  <input type="time" value={editingItem.time_end || ''} onChange={e => setEditingItem({...editingItem, time_end: e.target.value})} className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none" />
+                  <input type="time" value={editingItem.time_start || ''} onChange={e => setEditingItem({...editingItem, time_start: e.target.value})} className={`flex-1 ${inputClass}`} />
+                  <input type="time" value={editingItem.time_end || ''} onChange={e => setEditingItem({...editingItem, time_end: e.target.value})} className={`flex-1 ${inputClass}`} />
                 </div>
-                <input type="text" value={editingItem.location || ''} onChange={e => setEditingItem({...editingItem, location: e.target.value})} placeholder="Luogo" className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none" />
-                <input type="text" value={editingItem.description || ''} onChange={e => setEditingItem({...editingItem, description: e.target.value})} placeholder="Note" className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none" />
+                <input type="text" value={editingItem.location || ''} onChange={e => setEditingItem({...editingItem, location: e.target.value})} placeholder="Luogo" className={inputClass} />
+                <input type="text" value={editingItem.description || ''} onChange={e => setEditingItem({...editingItem, description: e.target.value})} placeholder="Note" className={inputClass} />
               </div>
               <div className="flex gap-2 mt-4">
-                <button onClick={() => setEditingItem(null)} className="flex-1 border border-white/10 text-white py-2 rounded-xl text-sm hover:border-white/30">Annulla</button>
+                <button onClick={() => setEditingItem(null)} className="flex-1 border border-white/10 text-white py-2 rounded-xl text-sm">Annulla</button>
                 <button onClick={handleUpdate} className="flex-1 bg-white text-black py-2 rounded-xl text-sm font-semibold">Salva</button>
               </div>
             </div>
@@ -537,7 +583,7 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
       {selectedBooking && !selectedItem && (
         <div className="w-72 shrink-0 bg-white/5 border border-white/10 rounded-2xl p-5 h-fit">
           <div className="flex items-start justify-between mb-4">
-            <span className="text-xs text-white/40 bg-white/5 px-2 py-0.5 rounded-full">Prenotazione confermata</span>
+            <span className="text-xs text-white/40 bg-white/5 px-2 py-0.5 rounded-full">🎫 Prenotazione</span>
             <button onClick={() => setSelectedBooking(null)} className="text-white/30 hover:text-white text-sm">✕</button>
           </div>
           <h3 className="font-semibold text-base mb-3">{selectedBooking.title}</h3>
@@ -552,12 +598,17 @@ export default function ItinerarySection({ tripId, startDate, endDate }: Props) 
                 {selectedBooking.booking_date && <div className="flex gap-2"><span>📅</span><span>{new Date(selectedBooking.booking_date + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}</span></div>}
                 {selectedBooking.time_start && <div className="flex gap-2"><span>🕐</span><span>{selectedBooking.time_start.slice(0,5)}{selectedBooking.time_end ? ` — ${selectedBooking.time_end.slice(0,5)}` : ''}</span></div>}
                 {selectedBooking.location_from && <div className="flex gap-2"><span>🛫</span><span>{selectedBooking.location_from}</span></div>}
-                {selectedBooking.location_to && <div className="flex gap-2"><span>🛬</span><span>{selectedBooking.location_to}</span></div>}
+                {selectedBooking.location_to && selectedBooking.type !== 'hotel' && <div className="flex gap-2"><span>🛬</span><span>{selectedBooking.location_to}</span></div>}
               </>
             )}
             {selectedBooking.notes && <div className="flex gap-2"><span>📝</span><span>{selectedBooking.notes}</span></div>}
+            {selectedBooking.confirmation_code && <div className="flex gap-2"><span>🔖</span><span>{selectedBooking.confirmation_code}</span></div>}
+            {selectedBooking.amount && <div className="flex gap-2"><span>💶</span><span>{selectedBooking.amount} {selectedBooking.currency}</span></div>}
           </div>
-          <p className="text-xs text-white/20 mt-4">Per modificare vai nella tab Biglietti</p>
+          <div className="flex gap-2 mt-5">
+            <button onClick={() => handleDeleteBooking(selectedBooking.id)} className="flex-1 border border-red-500/30 text-red-400 py-2 rounded-xl text-sm hover:border-red-500/60">Elimina</button>
+            <p className="text-xs text-white/20 mt-2 text-center flex-1">Modifica in Biglietti</p>
+          </div>
         </div>
       )}
     </div>
